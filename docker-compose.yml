@@ -1,8 +1,8 @@
-version: '3.8'
 
 services:
   redis:
     image: redis:7-alpine
+    container_name: keymakr-redis
     ports:
       - "6379:6379"
     healthcheck:
@@ -10,9 +10,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - keymakr-network
 
   api:
     build: .
+    container_name: keymakr-api
     ports:
       - "8000:8000"
     depends_on:
@@ -20,30 +23,52 @@ services:
         condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=info
     command: uvicorn task1.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./:/app
+    networks:
+      - keymakr-network
 
   ml_api:
     build: .
+    container_name: keymakr-ml-api
     ports:
       - "8001:8001"
     volumes:
       - ./task3:/app/task3
     command: sh -c "python task3/train_model.py && python task3/ml_api.py"
+    networks:
+      - keymakr-network
 
   celery_worker:
     build: .
+    container_name: keymakr-celery-worker
     depends_on:
       redis:
         condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./:/app
     command: celery -A task2.celery_app worker --loglevel=info
+    user: "1000:1000"
+    networks:
+      - keymakr-network
 
   celery_beat:
     build: .
+    container_name: keymakr-celery-beat
     depends_on:
       redis:
         condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379/0
     command: celery -A task2.celery_app beat --loglevel=info
+    user: "1000:1000"
+    networks:
+      - keymakr-network
+
+networks:
+  keymakr-network:
+    driver: bridge

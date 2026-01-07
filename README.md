@@ -44,7 +44,7 @@ docker-compose up --build
 
 ### Before task check
 
-Видалити кеш файли (опціонально)
+Delete this cache files (optionally)
 
 ```bash
 find . -type d -name "__pycache__" -exec rm -rf {} +
@@ -52,13 +52,13 @@ find . -type d -name ".pytest_cache" -exec rm -rf {} +
 find . -name "*.pyc" -delete
 ```
 
-Перевірити що всі файли на місці
+Check all files to be on a correct
 
 ```bash
 ls -la task1/ task2/ task3/
 ```
 
-Фінальний запуск і тест
+Final launching and test
 
 ```bash
 docker-compose up --build
@@ -106,6 +106,12 @@ celery -A task2.celery_app inspect active
 
 # Lauch task manually in Python:
 python -c "from task2.tasks import fetch_and_save_users; fetch_and_save_users.delay()"
+docker exec -it keymakr-api python -c \
+"from task2.tasks import fetch_and_save_users; fetch_and_save_users.delay()"
+or
+docker exec -it keymakr-api python3 -c ...
+
+docker exec -it keymakr-api python -c "from task2.tasks import generate_tasks_csv; generate_tasks_csv.delay()"
 
 # Check corollaries - file users_*.csv will be created
 ```
@@ -157,14 +163,16 @@ Swagger UI: <http://localhost:8001/docs>
 - Task 2: Celery beat launches the task automatically every 5 minutes
 - Task 3:  The model is simple and ready for demonstration, not for production
 
-## ToDo list
+## Makefile commands
 
-Enhance Celery (Retry logic with exponential backoff, Faker, Structured logging)
-ML Improvements (Multiple models comparison (Naive Bayes, Logistic Regression, Random Forest), Cross-validation, Classification reports, Model metrics & evaluation, Extended dataset)
-Makefile
-GitHub Actions CI/CD
-Corsmiddleware
-....
+make test-cov
+make docker-up
+make clean
+
+## Documentation
+
+- API Docs: <http://localhost:8000/docs>
+- ML Docs: <http://localhost:8001/docs>
 
 ## Author
 
