@@ -2,7 +2,7 @@ from celery import Celery
 from celery.schedules import crontab
 import os
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
 app = Celery(
     "task2",
@@ -21,7 +21,6 @@ app.conf.update(
     broker_connection_retry_on_startup=True,
 )
 
-# Automatical launch every 5 minutes
 app.conf.beat_schedule = {
     "fetch-users-every-5-minutes": {
         "task": "task2.tasks.fetch_and_save_users",

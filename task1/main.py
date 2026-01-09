@@ -1,121 +1,81 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.responses import JSONResponse
+from fastapi import status
+
+import requests
+from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime, UTC
+from datetime import datetime, timezone
+
+from task1 import models, dependencies
+from task1.schemas import TaskCreate, TaskUpdate, TaskOut
 
 app = FastAPI(title="To-Do List API")
 
-# In-memory storage
-tasks_db = {}
-task_id_counter = {"value": 1}
-
-
-class TaskCreate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = None
-    completed: bool = False
-    priority: Optional[str] = Field(None, description="low | medium | high")
-    assigned_to: Optional[int] = None
-    project_id: Optional[int] = None
-
-
-class TaskUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = None
-    completed: Optional[bool] = None
-    priority: Optional[str] = None
-
-class Task(BaseModel):
-    id: int
-    title: str
-    description: Optional[str] = None
-    
-    completed: bool = False
-    status: str = "todo"          
-
-    priority: Optional[str] = None
-    assigned_to: Optional[int] = None
-    project_id: Optional[int] = None
-
-    created_at: str
-    deleted_at: Optional[str] = None
-
-
 @app.get("/")
-def read_root():
-    return {"message": "To-Do List API", "endpoints": ["/tasks", "/tasks/{id}", "/health"]}
+def root():
+    return {"message": "OK"}
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+# models.Base.metadata.create_all(bind=database.engine)
 
-@app.get("/tasks", response_model=List[Task])
-def get_tasks():
-    """Get the list of all tasks"""
-    return [
-        task for task in tasks_db.values()
-        if task.deleted_at is None
-    ]
+@app.get("/tasks", response_model=List[TaskOut])
+def get_tasks(db: Session = Depends(dependencies.get_db)):
+    return db.query(models.Task).filter(models.Task.deleted_at == None).all()
 
-@app.post("/tasks", response_model=Task, status_code=201)
-def create_task(task: TaskCreate):
-    """Create a new task"""
-    task_id = task_id_counter["value"]
-    task_id_counter["value"] += 1
-    
-    status = "done" if task.completed else "todo"
-    
-    new_task = Task(
-        id=task_id,
-        title=task.title,
-        description=task.description,
-        completed=task.completed,
-        status=status,
-        priority=task.priority,
-        assigned_to=task.assigned_to,
-        project_id=task.project_id,
-        created_at=datetime.now(UTC).isoformat(),
-    )
-    
-    tasks_db[task_id] = new_task
-    return new_task
-
-
-@app.get("/tasks/{task_id}", response_model=Task)
-def get_task(task_id: int):
-    task = tasks_db.get(task_id)
-    """Get a task by ID"""
-    if not task or task.deleted_at is not None:
+@app.get("/tasks/{task_id}", response_model=TaskOut)
+def get_task(task_id: int, db: Session = Depends(dependencies.get_db)):
+    task = db.query(models.Task).filter(models.Task.id == task_id, models.Task.deleted_at == None).first()
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-
     return task
 
+@app.post("/tasks", response_model=TaskOut, status_code=status.HTTP_201_CREATED)
+def create_task(task: TaskCreate, db: Session = Depends(dependencies.get_db)):
+    new_task = models.Task(
+        title=task.title,
+        description=task.description,
+        completed=task.completed or False
+    )
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+    
+    description = new_task.description or new_task.title
+    try:
+        ml_response = requests.post(
+            "http://keymakr-ml-api:8001/predict",  
+            json={"task_description": description},
+            timeout=5
+        )
+        if ml_response.status_code == 200:
+            predicted_priority = ml_response.json().get("predicted_priority")
+            if predicted_priority in ["high", "low"]:
+                new_task.priority = predicted_priority
+                db.commit()
+                db.refresh(new_task)
+                print(f"Predicted priority '{predicted_priority}' for task '{new_task.title}'")
+    except requests.RequestException as e:
+        print(f"ML prediction failed: {e} (priority remains null)")
+    
+    return new_task
 
-@app.put("/tasks/{task_id}", response_model=Task)
-def update_task(task_id: int, task_update: TaskUpdate):
-    task = tasks_db.get(task_id)
-    """Renew a task"""
-    if not task or task.deleted_at is not None:
+@app.put("/tasks/{task_id}", response_model=TaskOut)
+def update_task(task_id: int, task_update: TaskUpdate, db: Session = Depends(dependencies.get_db)):
+    task = db.query(models.Task).filter(models.Task.id == task_id, models.Task.deleted_at == None).first()
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    
-    update_data = task_update.model_dump(exclude_unset=True)    
-    
-    if "completed" in update_data:
-        update_data["status"] = "done" if update_data["completed"] else "todo"
-    
-    updated_task = task.model_copy(update=update_data)
-
-    tasks_db[task_id] = updated_task
-    return updated_task
-
+    for key, value in task_update.model_dump(exclude_unset=True).items():
+        setattr(task, key, value)
+    if task.completed:
+        task.status = "done"
+    db.commit()
+    db.refresh(task)
+    return task
 
 @app.delete("/tasks/{task_id}", status_code=204)
-def delete_task(task_id: int):
-    task = tasks_db.get(task_id)
-    """Delete a task"""
-    if not task or task.deleted_at is not None:
+def delete_task(task_id: int, db: Session = Depends(dependencies.get_db)):
+    task = db.query(models.Task).filter(models.Task.id == task_id).first()
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    
-    task.deleted_at = datetime.now(UTC).isoformat()
-    tasks_db[task_id] = task
-    return None
+    task.deleted_at = datetime.now(timezone.utc)
+    db.commit()

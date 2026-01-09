@@ -103,14 +103,13 @@ curl -X DELETE "http://localhost:8000/tasks/1"
 ```bash
 # Check worker status
 celery -A task2.celery_app inspect active
+docker exec -it keymakr-celery-worker celery -A task2.celery_app inspect active
 
 # Lauch task manually in Python:
 python -c "from task2.tasks import fetch_and_save_users; fetch_and_save_users.delay()"
 docker exec -it keymakr-api python -c \
 "from task2.tasks import fetch_and_save_users; fetch_and_save_users.delay()"
 or
-docker exec -it keymakr-api python3 -c ...
-
 docker exec -it keymakr-api python -c "from task2.tasks import generate_tasks_csv; generate_tasks_csv.delay()"
 
 # Check corollaries - file users_*.csv will be created
@@ -168,6 +167,20 @@ Swagger UI: <http://localhost:8001/docs>
 make test-cov
 make docker-up
 make clean
+
+## Migration
+
+```bash
+docker exec -it keymakr-api alembic upgrade head
+alembic revision --autogenerate -m "create tasks table"
+alembic upgrade head
+```
+
+## API endpoints
+
+- To-Do API: <http://localhost:8000/tasks>
+- Docs: <http://localhost:8000/docs>
+- ML Predict: <http://localhost:8001/predict>
 
 ## Documentation
 

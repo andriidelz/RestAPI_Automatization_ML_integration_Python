@@ -45,3 +45,12 @@ lint:
 format:
 	@echo "Formatting with black..."
 	black task1/ task2/ task3/ --line-length=120
+
+db:
+	docker exec -it keymakr-db psql -U postgres tasks_db
+
+migrate:
+	docker exec -it keymakr-api alembic upgrade head
+
+makemigrations:
+	docker exec -it keymakr-api alembic revision --autogenerate -m "auto"

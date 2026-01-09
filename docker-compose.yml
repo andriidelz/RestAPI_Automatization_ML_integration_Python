@@ -21,10 +21,19 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      db:
+        condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/tasks_db
       - LOG_LEVEL=info
-    command: uvicorn task1.main:app --host 0.0.0.0 --port 8000 --reload
+      - ML_API_URL=http://keymakr-ml-api:8001/predict
+    command: >
+      sh -c "
+      sleep 10 &&
+      alembic upgrade head &&
+      uvicorn task1.main:app --host 0.0.0.0 --port 8000 --reload
+      "
     volumes:
       - ./:/app
     networks:
@@ -41,14 +50,37 @@ services:
     networks:
       - keymakr-network
 
+  db:
+    image: postgres:16-alpine
+    container_name: keymakr-db
+    environment:
+      POSTGRES_DB: tasks_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - keymakr-network  
+
   celery_worker:
     build: .
     container_name: keymakr-celery-worker
     depends_on:
       redis:
         condition: service_healthy
+      db:
+        condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/tasks_db
+      - ML_API_URL=http://keymakr-ml-api:8001/predict
     volumes:
       - ./:/app
     command: celery -A task2.celery_app worker --loglevel=info
@@ -62,9 +94,15 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      db:
+        condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379/0
-    command: celery -A task2.celery_app beat --loglevel=info
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/tasks_db
+    command: >
+      celery -A task2.celery_app beat
+      --loglevel=info
+      --schedule=/tmp/celerybeat-schedule
     user: "1000:1000"
     networks:
       - keymakr-network
@@ -72,3 +110,6 @@ services:
 networks:
   keymakr-network:
     driver: bridge
+volumes:
+  celerybeat-data:
+  postgres_data:
