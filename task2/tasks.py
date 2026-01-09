@@ -19,7 +19,6 @@ def fetch_and_save_users():
         response.raise_for_status()
         users = response.json()
         
-        # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"users_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.csv"
         
         with open(filename, "w", newline="", encoding="utf-8") as csvfile:

@@ -20,7 +20,6 @@ TestingSessionLocal = sessionmaker(
     bind=engine,
 )
 
-# Create schema once
 Base.metadata.create_all(bind=engine)
 
 def override_get_db():
@@ -57,11 +56,6 @@ def test_create_task():
     assert data["title"] == "Test Task"
     assert "id" in data
     assert "created_at" in data
-
-# def test_get_tasks_empty():
-#     response = client.get("/tasks")
-#     assert response.status_code == 200
-#     assert response.json() == []
 
 def test_get_tasks():
     client.post("/tasks", json={"title": "Task 1"})

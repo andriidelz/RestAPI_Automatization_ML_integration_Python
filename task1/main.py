@@ -16,8 +16,6 @@ app = FastAPI(title="To-Do List API")
 def root():
     return {"message": "OK"}
 
-# models.Base.metadata.create_all(bind=database.engine)
-
 @app.get("/tasks", response_model=List[TaskOut])
 def get_tasks(db: Session = Depends(dependencies.get_db)):
     return db.query(models.Task).filter(models.Task.deleted_at == None).all()

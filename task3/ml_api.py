@@ -5,7 +5,6 @@ import os
 
 app = FastAPI(title="Task Priority Prediction API")
 
-# Download the model
 MODEL_PATH = "task3/priority_model.pkl"
 model = None
 
