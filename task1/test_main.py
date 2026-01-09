@@ -1,7 +1,9 @@
 import pytest
+import requests
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from unittest.mock import patch, MagicMock
 
 from task1.main import app
 from task1.database import Base
@@ -110,3 +112,83 @@ def test_delete_task_not_found():
 def test_create_task_validation():
     response = client.post("/tasks", json={"title": ""})
     assert response.status_code == 422
+    
+def test_create_task_with_ml_prediction_high():
+    """Test ML API integration - high priority prediction"""
+    with patch('requests.post') as mock_post:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"predicted_priority": "high"}
+        mock_post.return_value = mock_response
+        
+        response = client.post("/tasks", json={
+            "title": "Critical Security Bug",
+            "description": "Fix critical vulnerability"
+        })
+        
+        assert response.status_code == 201
+        data = response.json()
+        assert data["priority"] == "high"
+
+
+def test_create_task_with_ml_prediction_low():
+    """Test ML API integration - low priority prediction"""
+    with patch('requests.post') as mock_post:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"predicted_priority": "low"}
+        mock_post.return_value = mock_response
+        
+        response = client.post("/tasks", json={
+            "title": "Update docs",
+            "description": "Update documentation"
+        })
+        
+        assert response.status_code == 201
+        data = response.json()
+        assert data["priority"] == "low"
+
+
+def test_create_task_ml_api_failure():
+    """Test task creation when ML API fails"""
+    with patch('requests.post') as mock_post:
+        mock_post.side_effect = requests.exceptions.RequestException("ML API unavailable")
+        
+        response = client.post("/tasks", json={
+            "title": "Task without ML",
+            "description": "Should still work"
+        })
+        
+        assert response.status_code == 201
+        
+        data = response.json()
+        assert data["title"] == "Task without ML"
+
+def test_create_task_ml_invalid_priority():
+    """Test ML API returns invalid priority"""
+    with patch('requests.post') as mock_post:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"predicted_priority": "invalid"}
+        mock_post.return_value = mock_response
+        
+        response = client.post("/tasks", json={
+            "title": "Test Task",
+            "description": "Test"
+        })
+
+        assert response.status_code == 201
+
+def test_get_db_dependency():
+    """Test database dependency for coverage"""
+    from task1.dependencies import get_db
+    
+    db_gen = get_db()
+    db = next(db_gen)
+    
+    assert db is not None
+    
+    try:
+        next(db_gen)
+    except StopIteration:
+        pass 
